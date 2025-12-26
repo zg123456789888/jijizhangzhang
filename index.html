@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> 竹弓 - 记记账账</title>
+    <link rel="shortcut icon" href="111.ico" type="image/x-icon">
+    <link rel="icon" href="111.ico" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+        :root { --bg-warm: #fdfaf5; --card-bg: #ffffff; --text-main: #4a4238; --accent-green: #606c38; }
+        body { font-family: 'Noto Sans SC', sans-serif; background-color: var(--bg-warm); color: var(--text-main); background-image: radial-gradient(#e5e7eb 0.5px, transparent 0.5px); background-size: 20px 20px; }
+        h1 { font-family: 'Noto Serif SC', serif; }
+        .amount-font { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; display: inline-flex; align-items: baseline; line-height: 1; }
+        .warm-card { background: var(--card-bg); border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); border: 1px solid rgba(255, 255, 255, 0.8); }
+        .input-field { background: #f8f9fa; border: 2px solid #eee; border-radius: 12px; padding: 12px; transition: all 0.3s; width: 100%; }
+        .input-field:focus { border-color: var(--accent-green); outline: none; background: white; }
+        .reimburse-item:hover .check-btn { background-color: #606c38; color: white; }
+    </style>
+</head>
+<body class="p-4 md:p-10 min-h-screen">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
+            <div class="text-center md:text-left">
+                <h1 class="text-5xl font-bold text-[#283618] tracking-tight pl-8">竹弓</h1>
+                <p class="text-[#606c38] font-medium mt-2 tracking-[0.5em]">— 记记账账 —</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex bg-stone-200/50 p-1.5 rounded-2xl text-xs font-bold">
+                    <button onclick="exportData()" class="px-3 py-2 text-stone-600 hover:text-stone-900 transition">导出备份</button>
+                    <label class="px-3 py-2 text-stone-600 hover:text-stone-900 cursor-pointer transition">
+                        导入 <input type="file" id="importInput" onchange="importData(event)" class="hidden">
+                    </label>
+                </div>
+                <button onclick="toggleModal('main')" class="bg-[#606c38] hover:bg-[#283618] text-white px-8 py-3 rounded-2xl font-bold shadow-lg transition-all active:scale-95">+ 记一笔</button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+            <div class="warm-card p-8 flex flex-col justify-center">
+                <span class="text-stone-400 text-xs font-bold tracking-widest uppercase mb-2">当前净资产</span>
+                <h2 id="totalBalance" class="text-4xl font-bold amount-font tracking-tighter">¥ 0.00</h2>
+                <div id="statusTag" class="mt-4 w-fit px-3 py-1 rounded-full text-[10px] font-black uppercase">No Data</div>
+            </div>
+            <div class="warm-card p-8 md:col-span-2 overflow-hidden">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-stone-400 text-xs font-bold tracking-widest uppercase">资产趋势 (含刻度)</span>
+                    <span id="monthTotal" class="amount-font font-bold text-lg">¥ 0.00</span>
+                </div>
+                <div class="h-[200px] w-full">
+                    <canvas id="mainChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+            <div class="md:col-span-1">
+                <div class="warm-card p-6 h-full">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-stone-700 text-sm tracking-wider">待领报销</h3>
+                        <button onclick="toggleModal('reimburse')" class="text-[10px] font-black bg-stone-100 px-2 py-1 rounded-md hover:bg-stone-200 uppercase">拟申请</button>
+                    </div>
+                    <div id="reimburseList" class="space-y-3 max-h-[250px] overflow-y-auto">
+                        </div>
+                </div>
+            </div>
+
+            <div class="md:col-span-2">
+                <div class="warm-card overflow-hidden">
+                    <div class="px-8 py-5 border-b border-stone-50 bg-stone-50/50 flex justify-between items-center">
+                        <h3 class="font-bold text-stone-700 tracking-wider">账目明细</h3>
+                        <span class="text-[10px] font-bold text-stone-300 uppercase tracking-widest">History</span>
+                    </div>
+                    <div id="recordList" class="max-h-[400px] overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="hidden fixed inset-0 bg-stone-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div id="mainForm" class="hidden warm-card w-full max-w-md p-10 shadow-2xl">
+            <h3 class="text-2xl font-bold text-stone-800 mb-8 border-l-4 border-[#606c38] pl-4">记一笔账</h3>
+            <div class="space-y-6">
+                <div><label class="text-xs font-black text-stone-400 uppercase">日期</label><input type="date" id="dateInput" class="input-field mt-1"></div>
+                <div><label class="text-xs font-black text-stone-400 uppercase">金额</label><input type="number" id="amountInput" step="0.01" class="input-field mt-1 text-xl font-bold"></div>
+                <div><label class="text-xs font-black text-stone-400 uppercase">备注</label><input type="text" id="descInput" class="input-field mt-1"></div>
+                <div class="flex gap-4 pt-4">
+                    <button onclick="closeModal()" class="flex-1 py-4 text-stone-400 font-bold hover:bg-stone-50 rounded-2xl transition">取消</button>
+                    <button onclick="saveRecord()" class="flex-1 py-4 bg-[#606c38] text-white font-bold rounded-2xl shadow-lg hover:bg-[#283618] transition">入账</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="reimburseForm" class="hidden warm-card w-full max-w-sm p-10 shadow-2xl">
+            <h3 class="text-xl font-bold text-stone-800 mb-6">拟申请报销</h3>
+            <div class="space-y-5">
+                <div><label class="text-xs font-black text-stone-400 uppercase">项目名称</label><input type="text" id="reiDesc" placeholder="如：加班餐" class="input-field mt-1"></div>
+                <div><label class="text-xs font-black text-stone-400 uppercase">拟领金额</label><input type="number" id="reiAmount" step="0.01" placeholder="0.00" class="input-field mt-1 font-bold"></div>
+                <div class="flex gap-3 pt-4">
+                    <button onclick="closeModal()" class="flex-1 py-3 text-stone-400 font-bold text-sm">取消</button>
+                    <button onclick="addReimburse()" class="flex-1 py-3 bg-stone-700 text-white font-bold rounded-xl text-sm transition">登记提醒</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let records = JSON.parse(localStorage.getItem('zhugong_records')) || [];
+        let pendings = JSON.parse(localStorage.getItem('zhugong_pendings')) || [];
+        let myChart;
+
+        function toggleModal(type) {
+            document.getElementById('modal').classList.remove('hidden');
+            document.getElementById('mainForm').classList.toggle('hidden', type !== 'main');
+            document.getElementById('reimburseForm').classList.toggle('hidden', type !== 'reimburse');
+            if(type === 'main') document.getElementById('dateInput').valueAsDate = new Date();
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        // --- 报销逻辑 ---
+        function addReimburse() {
+            const amount = parseFloat(document.getElementById('reiAmount').value);
+            const desc = document.getElementById('reiDesc').value || '报销款';
+            if(isNaN(amount)) return;
+            pendings.push({ id: Date.now(), amount, desc });
+            localStorage.setItem('zhugong_pendings', JSON.stringify(pendings));
+            updateUI();
+            closeModal();
+            document.getElementById('reiAmount').value = '';
+            document.getElementById('reiDesc').value = '';
+        }
+
+        function approveReimburse(id) {
+            const item = pendings.find(p => p.id === id);
+            records.push({ date: new Date().toISOString().slice(0,10), amount: item.amount, desc: `[领] ${item.desc}`, id: Date.now() });
+            pendings = pendings.filter(p => p.id !== id);
+            saveAndRefresh();
+        }
+
+        function deletePending(id) {
+            pendings = pendings.filter(p => p.id !== id);
+            localStorage.setItem('zhugong_pendings', JSON.stringify(pendings));
+            updateUI();
+        }
+
+        // --- 核心逻辑 ---
+        function saveRecord() {
+            const date = document.getElementById('dateInput').value;
+            const amount = parseFloat(document.getElementById('amountInput').value);
+            const desc = document.getElementById('descInput').value || (amount >= 0 ? '收入' : '支出');
+            if (!date || isNaN(amount)) return;
+            records.push({ date, amount, desc, id: Date.now() });
+            saveAndRefresh();
+            closeModal();
+            document.getElementById('amountInput').value = '';
+            document.getElementById('descInput').value = '';
+        }
+
+        function deleteRecord(id) { if(confirm('删除此笔记录？')) { records = records.filter(r => r.id !== id); saveAndRefresh(); } }
+
+        function saveAndRefresh() {
+            records.sort((a, b) => new Date(b.date) - new Date(a.date));
+            localStorage.setItem('zhugong_records', JSON.stringify(records));
+            localStorage.setItem('zhugong_pendings', JSON.stringify(pendings));
+            updateUI();
+        }
+
+        function updateUI() {
+            // 待入账列表
+            const reiList = document.getElementById('reimburseList');
+            reiList.innerHTML = pendings.length === 0 ? '<p class="text-[10px] text-stone-300 py-4 text-center">暂无待领报销</p>' : '';
+            pendings.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'reimburse-item flex justify-between items-center p-3 bg-stone-50 rounded-xl transition';
+                div.innerHTML = `
+                    <div class="overflow-hidden">
+                        <p class="text-xs font-bold text-stone-700 truncate">${p.desc}</p>
+                        <p class="text-[10px] amount-font font-bold text-stone-400">+${p.amount.toFixed(2)}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="approveReimburse(${p.id})" class="check-btn w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-stone-200 transition">✓</button>
+                        <button onclick="deletePending(${p.id})" class="w-7 h-7 flex items-center justify-center rounded-lg text-stone-200 hover:text-red-400 transition">×</button>
+                    </div>
+                `;
+                reiList.appendChild(div);
+            });
+
+            // 历史列表
+            const listEl = document.getElementById('recordList');
+            const balanceEl = document.getElementById('totalBalance');
+            const tagEl = document.getElementById('statusTag');
+            const monthTotalEl = document.getElementById('monthTotal');
+            listEl.innerHTML = '';
+            let total = 0, monthTotal = 0;
+            const now = new Date();
+
+            records.forEach(r => {
+                total += r.amount;
+                if(new Date(r.date).getMonth() === now.getMonth()) monthTotal += r.amount;
+                const item = document.createElement('div');
+                item.className = 'px-8 py-5 flex justify-between items-center hover:bg-stone-50/50 transition border-b border-stone-50 last:border-0 group text-sm';
+                item.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <div class="text-center"><p class="text-[9px] text-stone-300 font-bold">${r.date.split('-')[1]}月</p><p class="text-base font-bold text-stone-700 amount-font">${r.date.split('-')[2]}</p></div>
+                        <div><p class="font-bold text-stone-800">${r.desc}</p><p class="text-[9px] text-stone-400 font-bold">${r.date}</p></div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="text-xl font-bold amount-font ${r.amount >= 0 ? 'text-[#2d6a4f]' : 'text-[#9e2a2b]'}">${r.amount >= 0 ? '+' : ''}${r.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                        <button onclick="deleteRecord(${r.id})" class="opacity-0 group-hover:opacity-100 text-stone-200 hover:text-red-400 transition">×</button>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+
+            balanceEl.innerHTML = `¥ ${total.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            balanceEl.style.color = total >= 0 ? '#2d6a4f' : '#9e2a2b';
+            tagEl.innerText = total >= 0 ? "Profit" : "Loss";
+            tagEl.className = `mt-4 w-fit px-3 py-1 rounded-full text-[10px] font-black uppercase ${total >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`;
+            monthTotalEl.innerHTML = `¥ ${monthTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            monthTotalEl.style.color = monthTotal >= 0 ? '#606c38' : '#9e2a2b';
+            
+            renderChart();
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            if (myChart) myChart.destroy();
+            const sorted = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
+            let cum = 0;
+            const dataPoints = sorted.map(r => { cum += r.amount; return cum; });
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sorted.map(r => r.date.slice(5)),
+                    datasets: [{
+                        data: dataPoints, borderColor: '#606c38', borderWidth: 2.5, pointRadius: 0, tension: 0.4, fill: true,
+                        backgroundColor: (c) => {
+                            const g = ctx.createLinearGradient(0, 0, 0, 200);
+                            g.addColorStop(0, 'rgba(96, 108, 56, 0.1)');
+                            g.addColorStop(1, 'rgba(96, 108, 56, 0)');
+                            return g;
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { 
+                            display: true, // 开启 Y 轴刻度
+                            position: 'left',
+                            grid: { color: 'rgba(0,0,0,0.03)' },
+                            ticks: { color: '#a8a29e', font: { size: 9, family: 'monospace' } }
+                        },
+                        x: { grid: { display: false }, ticks: { color: '#a8a29e', font: { size: 9, weight: '700' } } }
+                    }
+                }
+            });
+        }
+
+        // 导出导入
+        function exportData() {
+            const data = { rec: records, pend: pendings };
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `竹弓备份_${new Date().toISOString().slice(0,10)}.json`; a.click();
+        }
+        function importData(event) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                records = data.rec || []; pendings = data.pend || []; saveAndRefresh();
+            };
+            reader.readAsText(event.target.files[0]);
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>
